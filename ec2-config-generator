@@ -1,0 +1,192 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"log"
+	"os"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Config represents the structure of infra.yaml
+type Config struct {
+	Provider  string `yaml:"provider"`
+	Region    string `yaml:"region"`
+	Resources struct {
+		EC2Instance EC2InstanceConfig `yaml:"ec2_instance"`
+	} `yaml:"resources"`
+}
+
+// EC2InstanceConfig represents the EC2 instance configuration
+type EC2InstanceConfig struct {
+	Name                string            `yaml:"name"`
+	InstanceType        string            `yaml:"instance_type"`
+	AMI                 string            `yaml:"ami"`
+	KeyName             string            `yaml:"key_name"`
+	SecurityGroups      []string          `yaml:"security_groups"`
+	SubnetID            string            `yaml:"subnet_id"`
+	VPCSecurityGroupIDs []string          `yaml:"vpc_security_group_ids"`
+	Monitoring          bool              `yaml:"monitoring"`
+	Tags                map[string]string `yaml:"tags"`
+	DesiredCount        int               `yaml:"desired_count"`
+}
+
+// Variables represents the structure of variables.yaml
+type Variables struct {
+	Region      string `yaml:"region"`
+	EC2Instance struct {
+		KeyName             string   `yaml:"key_name"`
+		AMI                 string   `yaml:"ami"`
+		SecurityGroups      []string `yaml:"security_groups"`
+		SubnetID            string   `yaml:"subnet_id"`
+		VPCSecurityGroupIDs []string `yaml:"vpc_security_group_ids"`
+		Monitoring          bool     `yaml:"monitoring"`
+		DesiredCount        int      `yaml:"desired_count"`
+	} `yaml:"ec2_instance"`
+}
+
+func main() {
+	// Create a reader for user input
+	reader := bufio.NewReader(os.Stdin)
+
+	// Prompt the user for inputs
+	fmt.Println("Welcome to the AWS EC2 Configuration Generator!")
+	fmt.Println("Please provide the following details:")
+
+	// Provider (fixed to "aws")
+	provider := "aws"
+
+	// Region
+	fmt.Print("Region (e.g., us-east-1): ")
+	region, _ := reader.ReadString('\n')
+	region = strings.TrimSpace(region)
+
+	// EC2 Instance Name
+	fmt.Print("EC2 Instance Name: ")
+	instanceName, _ := reader.ReadString('\n')
+	instanceName = strings.TrimSpace(instanceName)
+
+	// Instance Type
+	fmt.Print("Instance Type (e.g., t2.micro): ")
+	instanceType, _ := reader.ReadString('\n')
+	instanceType = strings.TrimSpace(instanceType)
+
+	// AMI ID
+	fmt.Print("AMI ID (e.g., ami-0abcdef1234567890): ")
+	ami, _ := reader.ReadString('\n')
+	ami = strings.TrimSpace(ami)
+
+	// Key Name
+	fmt.Print("Key Name (e.g., my-key-pair): ")
+	keyName, _ := reader.ReadString('\n')
+	keyName = strings.TrimSpace(keyName)
+
+	// Security Groups
+	fmt.Print("Security Groups (comma-separated, e.g., sg-0123456789abcdef0): ")
+	securityGroupsInput, _ := reader.ReadString('\n')
+	securityGroups := strings.Split(strings.TrimSpace(securityGroupsInput), ",")
+
+	// Subnet ID
+	fmt.Print("Subnet ID (e.g., subnet-0123456789abcdef0): ")
+	subnetID, _ := reader.ReadString('\n')
+	subnetID = strings.TrimSpace(subnetID)
+
+	// VPC Security Group IDs
+	fmt.Print("VPC Security Group IDs (comma-separated, e.g., sg-0123456789abcdef0): ")
+	vpcSecurityGroupIDsInput, _ := reader.ReadString('\n')
+	vpcSecurityGroupIDs := strings.Split(strings.TrimSpace(vpcSecurityGroupIDsInput), ",")
+
+	// Monitoring
+	fmt.Print("Enable Monitoring (true/false): ")
+	monitoringInput, _ := reader.ReadString('\n')
+	monitoring := strings.TrimSpace(monitoringInput) == "true"
+
+	// Tags
+	tags := make(map[string]string)
+	fmt.Println("Enter tags (key-value pairs). Enter 'done' when finished:")
+	for {
+		fmt.Print("Tag Key: ")
+		key, _ := reader.ReadString('\n')
+		key = strings.TrimSpace(key)
+		if key == "done" {
+			break
+		}
+		fmt.Print("Tag Value: ")
+		value, _ := reader.ReadString('\n')
+		value = strings.TrimSpace(value)
+		tags[key] = value
+	}
+
+	// Desired Count
+	fmt.Print("Desired Number of Instances: ")
+	var desiredCount int
+	fmt.Scanln(&desiredCount)
+
+	// Create Config struct with placeholders
+	config := Config{
+		Provider: provider,
+		Region:   "{{ region }}",
+		Resources: struct {
+			EC2Instance EC2InstanceConfig `yaml:"ec2_instance"`
+		}{
+			EC2Instance: EC2InstanceConfig{
+				Name:                "{{ ec2_instance.name }}",
+				InstanceType:        "{{ ec2_instance.instance_type }}",
+				AMI:                 "{{ ec2_instance.ami }}",
+				KeyName:             "{{ ec2_instance.key_name }}",
+				SecurityGroups:      []string{"{{ ec2_instance.security_groups }}"},
+				SubnetID:            "{{ ec2_instance.subnet_id }}",
+				VPCSecurityGroupIDs: []string{"{{ ec2_instance.vpc_security_group_ids }}"},
+				Monitoring:          monitoring,
+				Tags:                tags,
+				DesiredCount:        desiredCount,
+			},
+		},
+	}
+
+	// Create Variables struct with actual values
+	variables := Variables{
+		Region: region,
+		EC2Instance: struct {
+			KeyName             string   `yaml:"key_name"`
+			AMI                 string   `yaml:"ami"`
+			SecurityGroups      []string `yaml:"security_groups"`
+			SubnetID            string   `yaml:"subnet_id"`
+			VPCSecurityGroupIDs []string `yaml:"vpc_security_group_ids"`
+			Monitoring          bool     `yaml:"monitoring"`
+			DesiredCount        int      `yaml:"desired_count"`
+		}{
+			KeyName:             keyName,
+			AMI:                 ami,
+			SecurityGroups:      securityGroups,
+			SubnetID:            subnetID,
+			VPCSecurityGroupIDs: vpcSecurityGroupIDs,
+			Monitoring:          monitoring,
+			DesiredCount:        desiredCount,
+		},
+	}
+
+	// Write infra.yaml
+	configData, err := yaml.Marshal(&config)
+	if err != nil {
+		log.Fatalf("Failed to marshal config: %v", err)
+	}
+	err = os.WriteFile("infra.yaml", configData, 0644)
+	if err != nil {
+		log.Fatalf("Failed to write infra.yaml: %v", err)
+	}
+	fmt.Println("infra.yaml created successfully!")
+
+	// Write variables.yaml
+	variablesData, err := yaml.Marshal(&variables)
+	if err != nil {
+		log.Fatalf("Failed to marshal variables: %v", err)
+	}
+	err = os.WriteFile("variables.yaml", variablesData, 0644)
+	if err != nil {
+		log.Fatalf("Failed to write variables.yaml: %v", err)
+	}
+	fmt.Println("variables.yaml created successfully!")
+}
